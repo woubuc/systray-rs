@@ -133,21 +133,42 @@ impl Application {
         self.window.quit()
     }
 
+    /// Runs a step in the application
+    ///
+    /// This method is called internally by `wait_for_message` but can be used
+    /// to implement a custom main loop.
+    ///
+    /// Returns true if the step was successful and should be called again,
+    /// or false if the application has exited.
+    pub fn step(&mut self) -> Result<bool, Error> {
+        let msg = match self.rx.recv() {
+            Ok(msg) => msg,
+            Err(_) => {
+                self.quit();
+                return Ok(false);
+            }
+        };
+
+        if self.callback.contains_key(&msg.menu_index) {
+            if let Some(mut f) = self.callback.remove(&msg.menu_index) {
+                f(self)?;
+                self.callback.insert(msg.menu_index, f);
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Runs the main application loop
+    ///
+    /// Returns when the application has exited. For more control over
+    /// the application loop, see `step()`.
     pub fn wait_for_message(&mut self) -> Result<(), Error> {
         loop {
-            let msg;
-            match self.rx.recv() {
-                Ok(m) => msg = m,
-                Err(_) => {
-                    self.quit();
-                    break;
-                }
-            }
-            if self.callback.contains_key(&msg.menu_index) {
-                if let Some(mut f) = self.callback.remove(&msg.menu_index) {
-                    f(self)?;
-                    self.callback.insert(msg.menu_index, f);
-                }
+            let cont = self.step()?;
+
+            if !cont {
+                break;
             }
         }
 
